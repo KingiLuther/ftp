@@ -1,7 +1,0 @@
-{
-    "files.associations": {
-        "winsock2.h": "c",
-        "string": "c",
-        "windows.h": "c"
-    }
-}
