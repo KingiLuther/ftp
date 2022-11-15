@@ -19,5 +19,8 @@ of the current working directory on the remote machine.
 ***
 
 ## To compile in CLI:
+```
 gcc client/client.c -lwsock32 -o client/client.exe
+
 gcc server/server.c -lwsock32 -o server/server.exe
+```
