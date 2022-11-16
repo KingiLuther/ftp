@@ -312,6 +312,7 @@ bool send_File_A(SOCKET serfd, char* filename)
     //1.发送文件长度
     char t_fileSize[MAXLINE] = "";
     itoa(g_fileSize, t_fileSize, 10);
+    puts(t_fileSize);
     send_Msg(serfd, t_fileSize);
     printf("File:%d B\n", g_fileSize);
 
@@ -324,7 +325,7 @@ bool send_File_A(SOCKET serfd, char* filename)
     }
 
     //3.告诉客户端发送完成
-    send(serfd, "DONE", 4, 0);
+    send(serfd, "FILE", 4, 0);
     printf("\nSucceed to send %d Byte...\n", ret);
     return true;
 }
@@ -351,6 +352,7 @@ bool send_File_B(SOCKET serfd, char* filename)
     //1.发送文件长度
     char t_fileSize[MAXLINE] = "";
     itoa(g_fileSize, t_fileSize, 10);
+    puts(t_fileSize);
     send_Msg(serfd, t_fileSize);
     printf("File:%d B\n", g_fileSize);
 
@@ -361,9 +363,9 @@ bool send_File_B(SOCKET serfd, char* filename)
         err("send()");
         return false;
     }
-    
+
     //3.告诉客户端发送完成
-    send(serfd, "DONE", 4, 0);
+    send(serfd, "FILE", 4, 0);
     printf("\nSucceed to send %d Byte...\n", ret);
     return true;
 }

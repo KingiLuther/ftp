@@ -241,15 +241,25 @@ bool ftp_put(SOCKET clifd, char* token)
         recv_Msg(clifd, Buf);
         if(strcmp("ASCII", Buf) == 0){
             printf("\nThe file is ASCII...\n");
-            recv_File_A(clifd, token);
-            printf("ftp>do put\n");
-            return true;
+            if(!recv_File_A(clifd, token)){
+                printf("Fail to download.\n");
+                return false;
+            }
+            else{
+                printf("ftp>do put\n");
+                return true;
+            }
         }
         else if(strcmp("Binary", Buf) == 0){
             printf("\nThe file is binary...\n");
-            recv_File_B(clifd, token);
-            printf("ftp>do put\n");
-            return true;
+            if(!recv_File_B(clifd, token)){
+                printf("Fail to download.\n");
+                return false;
+            }
+            else{
+                printf("ftp>do put\n");
+                return true;
+            }
         }
     }
     else{   //用户输入的put后面没有参数
@@ -363,9 +373,12 @@ bool recv_File_A(SOCKET clifd, char* token)
     //1.接收文件长度
     long g_fileSize = 0;
     char temp[MAXLINE] = "";
-    recv_Msg(clifd, temp);
+    if(!recv_Msg(clifd, temp)){
+        printf("Fail to receive the length of file.\n");
+        return false;
+    }
     g_fileSize = atoi(temp);
-    printf("File: %s, Size: %ld\n", fileName, g_fileSize);
+    printf("File: %s, Type: ASCII, Size: %ld\n", fileName, g_fileSize);
 
     //2.打开文件
     FILE* write = fopen(fileName, "w");
@@ -401,13 +414,13 @@ bool recv_File_A(SOCKET clifd, char* token)
     int end = g_fileSize % MAXLINE;
     ret = recv(clifd, tempBuf, end, 0);
     total += ret;
-    fwrite(tempBuf, sizeof(char), end, write);
+    fwrite(tempBuf, sizeof(char), end-1, write);
     fclose(write);
 
     //5.接收完成
     memset(tempBuf, 0, MAXLINE);
     recv(clifd, tempBuf, MAXLINE, 0);
-    if(strcmp(tempBuf, "DONE") == 0){   //接收成功
+    if(strcmp(tempBuf, "FILE") == 0){   //接收成功
         printf("Download succeeded, Succeed to receive %d Byte...\n", total);
         return true;
     }
@@ -424,9 +437,12 @@ bool recv_File_B(SOCKET clifd, char* token)
     //1.接收文件长度
     long g_fileSize = 0;
     char temp[MAXLINE] = "";
-    recv_Msg(clifd, temp);
+    if(!recv_Msg(clifd, temp)){
+        printf("Fail to receive the length of file.\n");
+        return false;
+    }
     g_fileSize = atoi(temp);
-    printf("File: %s, Size: %ld\n", fileName, g_fileSize);
+    printf("File: %s, Type: ASCII, Size: %ld\n", fileName, g_fileSize);
 
     //2.打开文件
     FILE* write = fopen(fileName, "wb");
@@ -462,19 +478,20 @@ bool recv_File_B(SOCKET clifd, char* token)
     int end = g_fileSize % MAXLINE;
     ret = recv(clifd, tempBuf, end, 0);
     total += ret;
-    fwrite(tempBuf, sizeof(char), end, write);
+    fwrite(tempBuf, sizeof(char), end-1, write);
     fclose(write);
 
     //5.接收完成
     memset(tempBuf, 0, MAXLINE);
     recv(clifd, tempBuf, MAXLINE, 0);
-    if(strcmp(tempBuf, "DONE") == 0){   //接收成功
+    if(strcmp(tempBuf, "FILE") == 0){   //接收成功
         printf("Download succeeded, Succeed to receive %d Byte...\n", total);
         return true;
     }
     printf("Fail to download.\n");
     remove(fileName);
     return false;
+
 }
 
 /*接收客户端信息*/
@@ -503,7 +520,6 @@ bool recv_Msg(SOCKET clifd, char* recvBuf)  //只接受，不展示
     if(strcmp(tempBuf, "DONE") == 0){   //接收成功
         return true;
     }
-    err("recv()");
     return false;
 }
 
