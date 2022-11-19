@@ -26,7 +26,7 @@ bool ftp_mkdir(SOCKET clifd, char* token);
 bool ftp_delete(SOCKET clifd, char* token);
 bool ftp_get(SOCKET clifd, char* token);
 bool ftp_put(SOCKET clifd, char* token);
-bool isASCII(const char *filename);
+int isASCII(const char *filename);
 bool send_File_A(SOCKET clifd, char* filename);
 bool send_File_B(SOCKET clifd, char* filename);
 bool recv_File_A(SOCKET clifd, char* token);
@@ -59,7 +59,7 @@ bool close_Socket()
 SOCKET create_serverSocket()
 {
     //创建一个空的socket
-    SOCKET fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);  //前两个参数我还没搞懂是什么意思，使用TCP协议
+    SOCKET fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);  //使用TCP协议簇
     if(INVALID_SOCKET == fd){   //创建失败
         err("socket()");
         return INVALID_SOCKET;
@@ -74,7 +74,7 @@ SOCKET create_serverSocket()
         return INVALID_SOCKET; 
     }
     //开始监听
-    listen(fd, 50);
+    listen(fd, 1);
     printf("\nWait for client to connect...\n");
     return fd;
 }
@@ -131,7 +131,7 @@ bool ftp_ls(SOCKET clifd)
 	sprintf(path, "%s%s", path, mode);
     long HANDLE = _findfirst(path, &data);
     if (HANDLE < 0){
-    	//err("_findfirst()");
+    	printf("Fail to _finefirst()");
         return false;
 	}
     int nRet = 1;
@@ -213,17 +213,23 @@ bool ftp_delete(SOCKET clifd, char* token)
 bool ftp_get(SOCKET clifd, char* token)
 {
     if(token){
-        if(isASCII(token) == true){ //文件是ASCII
+        if(isASCII(token) == 1){ //文件是ASCII
             printf("\nThe file is ASCII...\n");
             send_Msg(clifd, "ASCII");
             send_File_A(clifd, token);
             printf("ftp>do get\n");
             return true;
         }
-        else{   //文件是二进制
+        else if(isASCII(token) == 2){   //文件是二进制
             printf("\nThe file is binary...\n");
             send_Msg(clifd, "Binary");
             send_File_B(clifd, token);
+            printf("ftp>do get\n");
+            return true;
+        }
+        else{
+            printf("\nThe file doesn't exist.\n");
+            send_Msg(clifd, "Wrong");
             printf("ftp>do get\n");
             return true;
         }
@@ -240,7 +246,6 @@ bool ftp_put(SOCKET clifd, char* token)
         char Buf[MAXLINE] = "";
         recv_Msg(clifd, Buf);
         if(strcmp("ASCII", Buf) == 0){
-            printf("\nThe file is ASCII...\n");
             if(!recv_File_A(clifd, token)){
                 printf("Fail to download.\n");
                 return false;
@@ -251,7 +256,6 @@ bool ftp_put(SOCKET clifd, char* token)
             }
         }
         else if(strcmp("Binary", Buf) == 0){
-            printf("\nThe file is binary...\n");
             if(!recv_File_B(clifd, token)){
                 printf("Fail to download.\n");
                 return false;
@@ -270,9 +274,13 @@ bool ftp_put(SOCKET clifd, char* token)
 
 /*文件操作*/
 
-bool isASCII(const char *filename)
+int isASCII(const char *filename)   //1,ASCII 2,Binary, -1,False
 {
     FILE *fp = fopen(filename, "rb");
+    if(!fp){
+        printf("Fail to open file, please cheack the name of file.\n");
+        return -1;
+    }
     long file_length;
     long A_count = 0;
     int read_len;
@@ -285,7 +293,7 @@ bool isASCII(const char *filename)
             A_count++;
     }
     fclose(fp);
-    return (A_count / file_length > 0.8) ? true : false;
+    return (A_count / file_length > 0.8) ? 1 : 2;
 }
 
 bool send_File_A(SOCKET clifd, char* filename)
@@ -396,7 +404,6 @@ bool recv_File_A(SOCKET clifd, char* token)
     for(int i=1; i<=pktNum-1; i++){
         memset(tempBuf, 0, MAXLINE);
         ret = recv(clifd, tempBuf, MAXLINE, 0);
-        //printf("ret = %d\n", ret);
         if(ret == 0){
             printf("\nServer is offline...\n");
             return false;
@@ -406,7 +413,6 @@ bool recv_File_A(SOCKET clifd, char* token)
             return false;
         }
         fwrite(tempBuf, sizeof(char), MAXLINE, write);
-        //printf("get pkt%d\n", i);
         total += ret;
     }
     //接收最后一个包
@@ -414,7 +420,7 @@ bool recv_File_A(SOCKET clifd, char* token)
     int end = g_fileSize % MAXLINE;
     ret = recv(clifd, tempBuf, end, 0);
     total += ret;
-    fwrite(tempBuf, sizeof(char), end-1, write);
+    fwrite(tempBuf, sizeof(char), end, write);
     fclose(write);
 
     //5.接收完成
@@ -460,7 +466,6 @@ bool recv_File_B(SOCKET clifd, char* token)
     for(int i=1; i<=pktNum-1; i++){
         memset(tempBuf, 0, MAXLINE);
         ret = recv(clifd, tempBuf, MAXLINE, 0);
-        //printf("ret = %d\n", ret);
         if(ret == 0){
             printf("\nServer is offline...\n");
             return false;
@@ -470,7 +475,6 @@ bool recv_File_B(SOCKET clifd, char* token)
             return false;
         }
         fwrite(tempBuf, sizeof(char), MAXLINE, write);
-        //printf("get pkt%d\n", i);
         total += ret;
     }
     //接收最后一个包
@@ -478,7 +482,7 @@ bool recv_File_B(SOCKET clifd, char* token)
     int end = g_fileSize % MAXLINE;
     ret = recv(clifd, tempBuf, end, 0);
     total += ret;
-    fwrite(tempBuf, sizeof(char), end-1, write);
+    fwrite(tempBuf, sizeof(char), end, write);
     fclose(write);
 
     //5.接收完成
@@ -586,25 +590,36 @@ bool recv_Cmd(SOCKET clifd, char* recvBuf)
 //服务器主函数
 int main()
 {
-    //启动服务器
+    //启动服务器，与客户端连接
     init_Socket();
     SOCKET serfd = create_serverSocket();
-    //与客户端连接
     SOCKET clifd = connect_clientSocket(serfd);
 
-    //test
+    //开始通信
+    char nameBuf[MAXLINE] = "";
+    if(recv_Msg(clifd, nameBuf))
+        printf("%s is connecting...\n", nameBuf);
+    else{
+        printf("Server is offline!\n");
+        closesocket(clifd);
+        closesocket(serfd);
+        close_Socket();
+        getchar();
+        return 0;
+    }
+
+    //main
     char recvBuf[MAXLINE] = "";
     while(true){
         if(!recv_Cmd(clifd, recvBuf))
             break;
     }
 
-    //关闭一切
+    //关闭服务器
     printf("Server is offline!\n");
     closesocket(clifd);
     closesocket(serfd);
     close_Socket();
     getchar();
     return 0;
-
 }

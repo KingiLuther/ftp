@@ -8,8 +8,8 @@
 
 //报错信息
 #define err(errMsg) printf("[error]%s failed! code: %d line: %d", errMsg, WSAGetLastError(), __LINE__);
+
 //端口信息
-//#define PORT 25742
 #define PORT 6798
 #define fake_IP "103.205.254.211"
 #define MAXLINE 1024
@@ -22,12 +22,12 @@ SOCKET connect_serverSocket();
 bool send_Msg(SOCKET serfd, char* sendBuf);
 bool recv_Msg(SOCKET serfd, char* recvBuf);
 bool show_Msg(SOCKET serfd, char* recvBuf);
-bool isASCII(const char *filename);
+int isASCII(const char *filename);
 bool recv_File_A(SOCKET serfd, char* token);
 bool recv_File_B(SOCKET serfd, char* token);
 bool send_File_A(SOCKET serfd, char *filename);
 bool send_File_B(SOCKET serfd, char *filename);
-bool user_Login();
+bool user_Login(SOCKET serfd);
 
 
 /*与服务器连接,断开连接*/
@@ -53,28 +53,29 @@ bool close_Socket()
 SOCKET create_clientSocket(const char* ip)
 {
     //创建一个空的socket
-    SOCKET fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);  //前两个参数我还没搞懂是什么意思，使用TCP协议
+    SOCKET fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);  //使用TCP协议簇
     if(INVALID_SOCKET == fd){   //创建失败
         err("socket()");
         return INVALID_SOCKET;
     }
+
     //给socket绑定服务端的IP地址和端口号
-    struct sockaddr_in addr;                //包含端口号、IP地址等信息的结构体
-    addr.sin_family = AF_INET;              //协议族需要与前面的协议族相同，不懂为什么
-    addr.sin_port = htons(PORT);            //端口号，用htons把本地字节序转为网络字节序，不懂为什么
+    struct sockaddr_in addr;                     //包含端口号、IP地址等信息的结构体
+    addr.sin_family = AF_INET;                   //协议族需要与前面的协议族相同，不懂为什么
+    addr.sin_port = htons(PORT);                 //端口号，用htons把本地字节序转为网络字节序，不懂为什么
     addr.sin_addr.S_un.S_addr = inet_addr(ip);   //绑定服务器IP地址
+
     //连接客户端服务器
     if(INVALID_SOCKET == connect(fd, (struct sockaddr*)&addr, sizeof(addr))){   //连接失败
-        err("connect()");
         return INVALID_SOCKET;
     }
+
     return fd;
 }
 
 SOCKET connect_serverSocket()
 {
     SOCKET serfd = create_clientSocket("127.0.0.1");
-    //SOCKET serfd = create_clientSocket(fake_IP);
     if(serfd == INVALID_SOCKET)
         printf("Connection failed...");
     else printf("\nConnection succeeded...\n");
@@ -87,7 +88,7 @@ bool send_Msg(SOCKET serfd, char* sendBuf)
     //1.发送sendBuf长度
     char len[MAXLINE] = "";
     itoa(strlen(sendBuf), len, 10);
-    if(SOCKET_ERROR == send(serfd, len, strlen(len), 0)){ //发送失败
+    if(SOCKET_ERROR == send(serfd, len, strlen(len), 0)){         //发送失败
         err("send()");
         return false;
     }
@@ -150,9 +151,13 @@ bool show_Msg(SOCKET serfd, char* recvBuf)  //展示
 
 
 /*文件操作*/
-bool isASCII(const char *filename)
+int isASCII(const char *filename)   //1,ASCII 2,Binary, -1,False
 {
     FILE *fp = fopen(filename, "rb");
+    if(!fp){
+        printf("Fail to open file, please cheack the name of file.\n");
+        return -1;
+    }
     long file_length;
     long A_count = 0;
     int read_len;
@@ -165,7 +170,7 @@ bool isASCII(const char *filename)
             A_count++;
     }
     fclose(fp);
-    return (A_count / file_length > 0.8) ? true : false;
+    return (A_count / file_length > 0.8) ? 1 : 2;
 }
 
 bool recv_File_A(SOCKET serfd, char* token)
@@ -195,7 +200,6 @@ bool recv_File_A(SOCKET serfd, char* token)
     for(int i=1; i<=pktNum-1; i++){
         memset(tempBuf, 0, MAXLINE);
         ret = recv(serfd, tempBuf, MAXLINE, 0);
-        //printf("ret = %d\n", ret);
         if(ret == 0){
             printf("\nServer is offline...\n");
             return false;
@@ -205,7 +209,6 @@ bool recv_File_A(SOCKET serfd, char* token)
             return false;
         }
         fwrite(tempBuf, sizeof(char), MAXLINE, write);
-        //printf("get pkt%d\n", i);
         total += ret;
     }
     //接收最后一个包
@@ -256,7 +259,6 @@ bool recv_File_B(SOCKET serfd, char* token)
     for(int i=1; i<=pktNum-1; i++){
         memset(tempBuf, 0, MAXLINE);
         ret = recv(serfd, tempBuf, MAXLINE, 0);
-        //printf("ret = %d\n", ret);
         if(ret == 0){
             printf("\nServer is offline...\n");
             return false;
@@ -266,7 +268,6 @@ bool recv_File_B(SOCKET serfd, char* token)
             return false;
         }
         fwrite(tempBuf, sizeof(char), MAXLINE, write);
-        //printf("get pkt%d\n", i);
         total += ret;
     }
     //接收最后一个包
@@ -312,13 +313,11 @@ bool send_File_A(SOCKET serfd, char* filename)
     //1.发送文件长度
     char t_fileSize[MAXLINE] = "";
     itoa(g_fileSize, t_fileSize, 10);
-    puts(t_fileSize);
     send_Msg(serfd, t_fileSize);
-    printf("File:%d B\n", g_fileSize);
+    printf("File: %s, Type: ASCII, Size: %ld\n", filename, g_fileSize);
 
     //2.发送文件本体
     int ret = send(serfd, g_fileBuf, g_fileSize, 0);
-    printf("ret = %d\n", ret);
     if(ret == SOCKET_ERROR){    //文件发送失败
         err("send()");
         return false;
@@ -352,13 +351,11 @@ bool send_File_B(SOCKET serfd, char* filename)
     //1.发送文件长度
     char t_fileSize[MAXLINE] = "";
     itoa(g_fileSize, t_fileSize, 10);
-    puts(t_fileSize);
     send_Msg(serfd, t_fileSize);
-    printf("File:%d B\n", g_fileSize);
+    printf("File: %s, Type: Binary, Size: %ld\n", filename, g_fileSize);
 
     //2.发送文件本体
     int ret = send(serfd, g_fileBuf, g_fileSize, 0);
-    printf("ret = %d\n", ret);
     if(ret == SOCKET_ERROR){    //文件发送失败
         err("send()");
         return false;
@@ -371,14 +368,15 @@ bool send_File_B(SOCKET serfd, char* filename)
 }
 
 /*用户登录*/
-bool user_Login()
+bool user_Login(SOCKET serfd)
 {
-    char userName[128] = "";
-    char userPass[128] = "";
+    char userName[MAXLINE] = "";
+    char userPass[MAXLINE] = "";
     printf("\nPlease enter the user name: ");
     gets(userName);
     printf("\nPlease enter the password: ");
     gets(userPass);
+    send_Msg(serfd, userName);
     printf("\nLogin succeeded. Welcome, %s.\n", userName);
     return true;
 }
@@ -391,9 +389,14 @@ int main()
     //启动客户端
     init_Socket();
     SOCKET serfd = connect_serverSocket();
+    if(serfd == INVALID_SOCKET){    //服务器离线，连接失败
+        close_Socket();
+        getchar();
+        return 0;
+    }
 
     //匿名登录
-    user_Login();
+    user_Login(serfd);
 
     //test
     while(true){
@@ -415,15 +418,15 @@ int main()
                     break;
                 }
                 else if(strcmp("help", command) == 0){
-                    printf("    get [remote_filename]\n");
-                    printf("    put [local_filename]\n");
-                    printf("    delete [remote_filename]\n");
-                    printf("    cd [remote_direcotry_name] or cd ..\n");
-                    printf("    mkdir [remote_direcotry_nam]\n");
-                    printf("    ls\n");
-                    printf("    pwd\n");
-                    printf("    help\n");
-                    printf("    quit\n");
+                    printf("cd        Change to the [remote_direcotry_name] on the remote machine or change to the parent directory of the current directory.\n");
+                    printf("delete    Delete the file with the name [remote_filename] from the remote directory.\n");
+                    printf("get       Copy file with the name [remote_filename] from remote directory to local directory.\n");
+                    printf("help      Get some help about the client.\n");
+                    printf("ls        List the files and subdirectories in the remote directory.\n");
+                    printf("mkdir     Create directory named [remote_direcotry_name] as the sub-directory of the current working directory on the remote machine.\n");
+                    printf("put       Copy file with the name [local_filename] from local directory to remote directory.\n");
+                    printf("pwd       Print the current working directory on the remote machine. \n");
+                    printf("quit      End the FTP session.\n");
                 }   
                 else if(strcmp("pwd", command) == 0){
                     send_Msg(serfd, sendBuf);
@@ -454,17 +457,25 @@ int main()
                     else if(strcmp("Binary", recvBuf) == 0){
                         recv_File_B(serfd, token);
                     }
+                    else if(strcmp("Wrong", recvBuf) == 0){
+                        printf("The file doesn't exist.\n");
+                    }
                 }
                 else if(strcmp("put", command) == 0){
                     send_Msg(serfd, sendBuf);
                     if(token){
-                        if(isASCII(token) == true){ //文件是ASCII
+                        if(isASCII(token) == 1){ //文件是ASCII
                             send_Msg(serfd, "ASCII");
                             send_File_A(serfd, token);
                         }
-                        else{   //文件是二进制
+                        else if(isASCII(token) == 2){   //文件是二进制
                             send_Msg(serfd, "Binary");
                             send_File_B(serfd, token);
+                        }
+                        else if(isASCII(token) == 2){   //文件不存在
+                        }
+                        else{
+                            printf("Fail to put.\n");
                         }
                     }
                     else   //用户输入的get后面没有参数
